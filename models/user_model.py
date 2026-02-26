@@ -16,3 +16,14 @@ def make_admin(username):
         {"username": username},
         {"$set": {"role": "admin"}}
     )
+
+
+def delete_user(username):
+    """Remove a user document from the database."""
+    users_collection.delete_one({"username": username})
+
+
+def get_all_users():
+    """Return all users (passwords excluded)."""
+    cursor = users_collection.find({}, {"_id": 0, "password": 0})
+    return list(cursor)

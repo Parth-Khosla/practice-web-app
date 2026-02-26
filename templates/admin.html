@@ -5,4 +5,18 @@
     <button type="submit">Promote</button>
 </form>
 
+<form method="POST" style="margin-top:1em;">
+    Remove Username: <input name="remove_username">
+    <button type="submit">Remove</button>
+</form>
+
+{% if users %}
+    <h3>All users</h3>
+    <ul>
+    {% for u in users %}
+        <li>{{ u.username }} ({{ u.get('role','user') }})</li>
+    {% endfor %}
+    </ul>
+{% endif %}
+
 <a href="/dashboard">Back</a>

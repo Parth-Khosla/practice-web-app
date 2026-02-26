@@ -2,27 +2,32 @@ from flask import Flask, render_template, request, redirect, session, url_for, a
 from config import Config
 from utils.security import bcrypt
 from services.auth_service import register_user, login_user
-from services.admin_service import promote_to_admin
+from services.admin_service import promote_to_admin, remove_user, list_users
 from models.message_model import create_message, get_user_messages
 from models.user_model import find_user_by_username, create_user
-from datetime import timedelta
+from datetime import timedelta, datetime
 import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
-app.permanent_session_lifetime = timedelta(seconds=Config.SESSION_TIMEOUT)
+# explicitly set lifetime on the config as well as the attribute
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=Config.SESSION_TIMEOUT)
+app.permanent_session_lifetime = app.config["PERMANENT_SESSION_LIFETIME"]
+# disable automatic refresh of the session cookie; we'll handle inactivity manually
+app.config["SESSION_REFRESH_EACH_REQUEST"] = Config.SESSION_REFRESH_EACH_REQUEST
 
 bcrypt.init_app(app)
 
 # -------- First Run Admin Creation --------
 def create_initial_admin():
-    if not find_user_by_username("admin"):
+    # create a default administrator account if one doesn't already exist
+    if not find_user_by_username(Config.ADMIN_USERNAME):
         from utils.security import hash_password
         create_user({
-            "username": "admin",
-            "password": hash_password("Admin@123"),
-            "email": "admin@example.com",
-            "phone": "0000000000",
+            "username": Config.ADMIN_USERNAME,
+            "password": hash_password(Config.ADMIN_PASSWORD),
+            "email": Config.ADMIN_EMAIL,
+            "phone": Config.ADMIN_PHONE,
             "role": "admin"
         })
         print("Initial admin created.")
@@ -83,6 +88,35 @@ def logout():
     return redirect("/login")
 
 # -------- Dynamic Admin URL --------
+@app.before_request
+def enforce_session_timeout():
+    # if there is no session or user isn't logged in, nothing to do
+    if "username" not in session:
+        return
+
+    now = datetime.utcnow()
+    last = session.get("last_active")
+    if last:
+        # session data may come back as a string or with tzinfo; normalize to naive
+        if isinstance(last, str):
+            try:
+                last = datetime.fromisoformat(last)
+            except ValueError:
+                # abort if parsing fails
+                last = None
+        elif isinstance(last, datetime) and last.tzinfo is not None:
+            last = last.replace(tzinfo=None)
+
+        if last:
+            elapsed = now - last
+            if elapsed.total_seconds() > Config.SESSION_TIMEOUT:
+                # expire the session and redirect to login
+                session.clear()
+                return redirect(url_for("login"))
+    # store ISO string so the cookie serialization is predictable
+    session["last_active"] = now.isoformat()
+
+
 @app.route(f"/admin/{Config.ADMIN_URL_SECRET}", methods=["GET", "POST"])
 def admin_panel():
     if "username" not in session:
@@ -93,9 +127,14 @@ def admin_panel():
         abort(403)
 
     if request.method == "POST":
-        promote_to_admin(user, request.form["username"])
+        # two possible actions: promote or remove
+        if "username" in request.form:
+            promote_to_admin(user, request.form["username"])
+        elif "remove_username" in request.form:
+            remove_user(user, request.form["remove_username"])
 
-    return render_template("admin.html")
+    users = list_users()
+    return render_template("admin.html", users=users)
     
 
 if __name__ == "__main__":
