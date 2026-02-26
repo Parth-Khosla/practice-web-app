@@ -1,0 +1,23 @@
+<h2>Dashboard</h2>
+
+<form method="POST">
+    Title: <input name="title"><br>
+    Message: <input name="message"><br>
+    <button type="submit">Submit</button>
+</form>
+
+<table border="1">
+<tr>
+    <th>Title</th>
+    <th>Message</th>
+</tr>
+
+{% for msg in messages %}
+<tr>
+    <td>{{ msg.title }}</td>
+    <td>{{ msg.message }}</td>
+</tr>
+{% endfor %}
+</table>
+
+<a href="/logout">Logout</a>
